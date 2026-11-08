@@ -89,3 +89,38 @@ Open the local URL displayed by Vite, normally http://localhost:5173.
 ## Author
 
 Mustafa Fayaz
+
+# ICSI 418Y - Programming Assignment 4
+
+## Project Backlog and User Stories
+
+PA4 extends PA3 by adding user stories and project backlogs.
+
+## PA4 Features
+
+- Create, view, edit, and delete user stories
+- Assign stories to project members
+- Set priority: High, Medium, Low
+- Set status: To Do, In Progress, Done
+- Leave stories unassigned
+- Confirm before deleting stories
+- Prevent removing members with assigned stories
+- Validate story information
+
+## Database
+
+The UserStories collection stores:
+- _id
+- project_id
+- title
+- description
+- priority
+- status
+- assigned_user_id
+
+## How to Run
+
+Backend: cd server && npm install && node index.js
+
+Frontend: cd client && npm install && npm run dev
+
