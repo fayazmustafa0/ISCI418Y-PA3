@@ -372,6 +372,10 @@ app.delete(
         });
       }
 
+      if (await UserStory.exists({project_id: projectId, assigned_user_id: userId})) {
+        return res.status(409).json({message: "Member has assigned stories, including Done stories. Reassign, unassign, or delete them first."});
+      }
+
       const removed = await ProjectMembership.findOneAndDelete({
         project_id: projectId,
         user_id: userId,
@@ -391,6 +395,79 @@ app.delete(
     }
   }
 );
+
+
+// PA4 USER STORIES
+const storySchema = new mongoose.Schema({
+  project_id: {type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true, immutable: true},
+  title: {type: String, required: true, trim: true},
+  description: {type: String, required: true, trim: true},
+  priority: {type: String, enum: ["High", "Medium", "Low"], required: true},
+  status: {type: String, enum: ["To Do", "In Progress", "Done"], default: "To Do"},
+  assigned_user_id: {type: mongoose.Schema.Types.ObjectId, ref: "User", default: null}
+}, {collection: "UserStories"});
+const UserStory = mongoose.model("UserStory", storySchema);
+const storyPopulate = {path: "assigned_user_id", select: "f_name l_name username"};
+const storyPriorities = ["High", "Medium", "Low"];
+const storyStatuses = ["To Do", "In Progress", "Done"];
+const storyText = x => typeof x === "string" && x.trim().length > 0;
+async function checkStoryAssignment(projectId, userId) {
+  if (userId === null || userId === "" || userId === undefined) return null;
+  if (typeof userId !== "string" || !validId(userId)) throw new Error("Invalid assigned user ID.");
+  if (!await User.exists({_id: userId})) throw new Error("Assigned user does not exist.");
+  if (!await ProjectMembership.exists({project_id: projectId, user_id: userId}))
+    throw new Error("Assigned user must be a member of this project.");
+  return userId;
+}
+app.get("/projects/:projectId/stories", async (req, res) => {
+  try {
+    const {projectId} = req.params;
+    if (!validId(projectId)) return res.status(400).json({message:"Invalid project ID."});
+    if (!await Project.exists({_id:projectId})) return res.status(404).json({message:"Project does not exist."});
+    res.json(await UserStory.find({project_id:projectId}).populate(storyPopulate).sort({_id:-1}));
+  } catch(e) {return serverError(res,e);}
+});
+app.post("/projects/:projectId/stories", async (req,res) => {
+  try {
+    const {projectId} = req.params;
+    if (!validId(projectId)) return res.status(400).json({message:"Invalid project ID."});
+    if (!await Project.exists({_id:projectId})) return res.status(404).json({message:"Project does not exist."});
+    const {title,description,priority,assigned_user_id} = req.body;
+    if (!storyText(title) || !storyText(description) || !storyPriorities.includes(priority))
+      return res.status(400).json({message:"Title, description, and valid priority are required."});
+    let assigned;
+    try {assigned=await checkStoryAssignment(projectId,assigned_user_id);} catch(e) {return res.status(400).json({message:e.message});}
+    const story=await UserStory.create({project_id:projectId,title:title.trim(),description:description.trim(),priority,status:"To Do",assigned_user_id:assigned});
+    await story.populate(storyPopulate);
+    res.status(201).json(story);
+  } catch(e) {return serverError(res,e);}
+});
+app.put("/projects/:projectId/stories/:storyId", async(req,res) => {
+  try {
+    const {projectId,storyId}=req.params;
+    if (!validId(projectId) || !validId(storyId)) return res.status(400).json({message:"Invalid project or story ID."});
+    if (!await Project.exists({_id:projectId})) return res.status(404).json({message:"Project does not exist."});
+    const story=await UserStory.findOne({_id:storyId,project_id:projectId});
+    if (!story) return res.status(404).json({message:"Story does not exist in this project."});
+    const {title,description,priority,status,assigned_user_id}=req.body;
+    if (!storyText(title) || !storyText(description) || !storyPriorities.includes(priority) || !storyStatuses.includes(status))
+      return res.status(400).json({message:"Invalid story fields or status."});
+    let assigned;
+    try {assigned=await checkStoryAssignment(projectId,assigned_user_id);} catch(e) {return res.status(400).json({message:e.message});}
+    Object.assign(story,{title:title.trim(),description:description.trim(),priority,status,assigned_user_id:assigned});
+    await story.save(); await story.populate(storyPopulate); res.json(story);
+  } catch(e) {return serverError(res,e);}
+});
+app.delete("/projects/:projectId/stories/:storyId", async(req,res) => {
+  try {
+    const {projectId,storyId}=req.params;
+    if (!validId(projectId) || !validId(storyId)) return res.status(400).json({message:"Invalid project or story ID."});
+    if (!await Project.exists({_id:projectId})) return res.status(404).json({message:"Project does not exist."});
+    const story=await UserStory.findOneAndDelete({_id:storyId,project_id:projectId});
+    if (!story) return res.status(404).json({message:"Story does not exist in this project."});
+    res.json({message:"Story deleted."});
+  } catch(e) {return serverError(res,e);}
+});
 
 // START SERVER
 app.listen(5000, () => {

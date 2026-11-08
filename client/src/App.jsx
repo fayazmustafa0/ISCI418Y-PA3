@@ -220,6 +220,47 @@ function App() {
     }
   };
 
+
+  // PA4 backlog state
+  const emptyStory = {title:"",description:"",priority:"Medium",status:"To Do",assigned_user_id:""};
+  const [stories,setStories] = useState([]);
+  const [storyForm,setStoryForm] = useState(emptyStory);
+  const [editingStory,setEditingStory] = useState(null);
+  const [openStory,setOpenStory] = useState(null);
+  const [storyLoading,setStoryLoading] = useState(false);
+  useEffect(() => {
+    setStories([]); setStoryForm(emptyStory); setEditingStory(null); setOpenStory(null);
+    if (!selectedProject) return;
+    let active=true;
+    request(`/projects/${selectedProject}/stories`).then(data=>{if(active)setStories(data);}).catch(e=>{if(active)setMessage(e.message);});
+    return ()=>{active=false;};
+  },[selectedProject]);
+  async function refreshStories(){
+    if(selectedProject) setStories(await request(`/projects/${selectedProject}/stories`));
+  }
+  async function saveStory(e){
+    e.preventDefault();setStoryLoading(true);
+    try {
+      const path=`/projects/${selectedProject}/stories${editingStory?`/${editingStory}`:""}`;
+      await request(path,{method:editingStory?"PUT":"POST",body:JSON.stringify(storyForm)});
+      await refreshStories();setStoryForm(emptyStory);setEditingStory(null);
+      setMessage(editingStory?"Story updated.":"Story created.");
+    }catch(e){setMessage(e.message);}finally{setStoryLoading(false);}
+  }
+  function startEdit(s){
+    setEditingStory(s._id);setOpenStory(null);
+    setStoryForm({title:s.title,description:s.description,priority:s.priority,status:s.status,assigned_user_id:s.assigned_user_id?._id||""});
+  }
+  async function deleteStory(s){
+    if(!window.confirm(`Delete story "${s.title}"?`))return;
+    setStoryLoading(true);
+    try{
+      await request(`/projects/${selectedProject}/stories/${s._id}`,{method:"DELETE"});
+      if(editingStory===s._id){setEditingStory(null);setStoryForm(emptyStory);}
+      setOpenStory(null);await refreshStories();setMessage("Story deleted.");
+    }catch(e){setMessage(e.message);}finally{setStoryLoading(false);}
+  }
+
   const activeProject = projects.find(
     (p) => p._id === selectedProject
   );
@@ -228,7 +269,7 @@ function App() {
     <div className="container">
       <h1>Software Project Management</h1>
       <p className="subtitle">
-        ICSI 418Y - Programming Assignment 3
+        ICSI 418Y - Programming Assignment 4
       </p>
 
       {message && (
@@ -505,6 +546,47 @@ function App() {
             </>
           )}
         </div>
+      </section>
+
+      <section>
+        <h2>5. Project Backlog (PA4)</h2>
+        {!selectedProject ? <p>Select a project above to view its backlog.</p> : <>
+          <h3>{activeProject?.name} - User Stories</h3>
+          <form className="wide-form" onSubmit={saveStory}>
+            <h3>{editingStory?"Edit User Story":"Create User Story"}</h3>
+            <label>Title</label>
+            <input required value={storyForm.title} onChange={e=>setStoryForm({...storyForm,title:e.target.value})} />
+            <label>Description</label>
+            <textarea required placeholder="As a user, I want ..., so that ..." value={storyForm.description} onChange={e=>setStoryForm({...storyForm,description:e.target.value})}/>
+            <label>Priority</label>
+            <select value={storyForm.priority} onChange={e=>setStoryForm({...storyForm,priority:e.target.value})}>
+              {["High","Medium","Low"].map(x=><option key={x}>{x}</option>)}
+            </select>
+            {editingStory && <><label>Status</label><select value={storyForm.status} onChange={e=>setStoryForm({...storyForm,status:e.target.value})}>
+              {["To Do","In Progress","Done"].map(x=><option key={x}>{x}</option>)}
+            </select></>}
+            <label>Assigned Member</label>
+            <select value={storyForm.assigned_user_id} onChange={e=>setStoryForm({...storyForm,assigned_user_id:e.target.value})}>
+              <option value="">Unassigned</option>
+              {members.filter(m=>m.user_id).map(m=><option key={m.user_id._id} value={m.user_id._id}>{displayName(m.user_id)} (@{m.user_id.username})</option>)}
+            </select>
+            <button disabled={storyLoading}>{editingStory?"Save Changes":"Create Story"}</button>
+            {editingStory && <button type="button" onClick={()=>{setEditingStory(null);setStoryForm(emptyStory);}}>Cancel</button>}
+          </form>
+          <h3>Stories</h3>
+          {stories.length===0?<p>No user stories for this project yet.</p>:<div className="project-list">
+            {stories.map(s=><div className="project-card" key={s._id}>
+              <h3>{s.title}</h3>
+              <p><strong>Priority:</strong> {s.priority}</p>
+              <p><strong>Status:</strong> {s.status}</p>
+              <p><strong>Assigned:</strong> {s.assigned_user_id?displayName(s.assigned_user_id):"Unassigned"}</p>
+              <button type="button" onClick={()=>setOpenStory(openStory===s._id?null:s._id)}>{openStory===s._id?"Hide Details":"Details"}</button>
+              {openStory===s._id&&<p>{s.description}</p>}
+              <button type="button" onClick={()=>startEdit(s)}>Edit</button>
+              <button type="button" className="remove-button" onClick={()=>deleteStory(s)} disabled={storyLoading}>Delete</button>
+            </div>)}
+          </div>}
+        </>}
       </section>
     </div>
   );
